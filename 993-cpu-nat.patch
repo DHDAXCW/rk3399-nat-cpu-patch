@@ -1,0 +1,49 @@
+--- a/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
++++ b/drivers/net/ethernet/stmicro/stmmac/stmmac_main.c
+@@ -4519,8 +4519,10 @@ int stmmac_dvr_probe(struct device *device,
+ 		     struct plat_stmmacenet_data *plat_dat,
+ 		     struct stmmac_resources *res)
+ {
++	int cpu_id = 5;
+ 	struct net_device *ndev = NULL;
+ 	struct stmmac_priv *priv;
++	struct cpumask cpumask;
+ 	u32 queue, rxq, maxq;
+ 	int i, ret = 0;
+ 
+@@ -4545,6 +4547,10 @@ int stmmac_dvr_probe(struct device *device,
+ 	priv->wol_irq = res->wol_irq;
+ 	priv->lpi_irq = res->lpi_irq;
+ 
++	cpumask_clear(&cpumask);
++	cpumask_set_cpu(cpu_id,&cpumask);
++	irq_set_affinity(priv->dev->irq,&cpumask);
++
+ 	if (!IS_ERR_OR_NULL(res->mac))
+ 		memcpy(priv->dev->dev_addr, res->mac, ETH_ALEN);
+ 
+--- a/drivers/irqchip/irq-gic-v3.c
++++ b/drivers/irqchip/irq-gic-v3.c
+@@ -757,6 +757,10 @@ static void __init gic_dist_init(void)
+ 	affinity = gic_mpidr_to_affinity(cpu_logical_map(smp_processor_id()));
+ 	for (i = 32; i < GIC_LINE_NR; i++)
+ 		gic_write_irouter(affinity, base + GICD_IROUTER + i * 8);
++	
++	affinity = affinity | 0x80000000;
++	gic_write_irouter(affinity, base + GICD_IROUTER + 44 * 8);
++	writel_relaxed(0xa0a0a090, base + GICD_IPRIORITYR + rounddown(44, 4));
+ 
+ 	for (i = 0; i < GIC_ESPI_NR; i++)
+ 		gic_write_irouter(affinity, base + GICD_IROUTERnE + i * 8);
+@@ -1154,7 +1158,8 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
+ 	reg = gic_dist_base(d) + offset + (index * 8);
+ 	val = gic_mpidr_to_affinity(cpu_logical_map(cpu));
+ 
+-	gic_write_irouter(val, reg);
++	if (gic_irq(d) != 44)
++		gic_write_irouter(val, reg);
+ 
+ 	/*
+ 	 * If the interrupt was enabled, enabled it again. Otherwise,
+-- 
+2.25.1

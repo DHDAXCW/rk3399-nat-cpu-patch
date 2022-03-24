@@ -1,0 +1,1 @@
+# rk3399-nat-cpu-patch
